@@ -29,3 +29,4 @@ out
 
 # Local environment variables
 .env*
+!.env.example
