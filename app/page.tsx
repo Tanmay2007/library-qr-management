@@ -9,6 +9,7 @@ import { QRScanner } from '../components/QRScanner';
 import { Circulation } from '../components/Circulation';
 import { Members } from '../components/Members';
 import { QRStudio } from '../components/QRStudio';
+import { BorrowedBooks } from '../components/BorrowedBooks';
 import { Book, Member, Loan, ActivityLog } from '../types';
 
 import {
@@ -185,6 +186,10 @@ export default function Home() {
               onPerformReturn={handlePerformReturn}
               onExtendLoan={handleExtendLoan}
             />
+          )}
+
+          {activeTab === 'borrowed' && (
+            <BorrowedBooks onNavigate={setActiveTab} />
           )}
 
           {activeTab === 'members' && (

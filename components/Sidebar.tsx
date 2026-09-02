@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { LayoutDashboard, BookOpen, QrCode, ArrowLeftRight, Users, Printer } from 'lucide-react';
+import { LayoutDashboard, BookOpen, QrCode, ArrowLeftRight, Users, Printer, BookMarked } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -14,6 +14,7 @@ export function Sidebar({ activeTab, onNavigate }: SidebarProps) {
     { id: 'inventory', label: 'Book Inventory', icon: BookOpen },
     { id: 'scanner', label: 'QR Scanner Hub', icon: QrCode, badge: 'Phase 4' },
     { id: 'circulation', label: 'Circulation & Loans', icon: ArrowLeftRight },
+    { id: 'borrowed', label: 'Borrowed Books', icon: BookMarked },
     { id: 'members', label: 'Members & ID Cards', icon: Users },
     { id: 'studio', label: 'Batch Label Studio', icon: Printer }
   ];
