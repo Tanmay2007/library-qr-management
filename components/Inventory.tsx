@@ -76,21 +76,23 @@ export function Inventory({ onNavigate }: InventoryProps) {
     fetchBooks();
   }, []);
 
-  const categories = ['ALL', ...Array.from(new Set(books.map(b => b.category)))];
+  const categories = ['ALL', ...Array.from(new Set(['Computer Science', 'Software Engineering', 'History', 'Science', 'Self Improvement', 'Fiction', ...books.map(b => b.category)].filter(Boolean)))];
 
   const filteredBooks = books.filter(book => {
+    const term = searchTerm.trim().toLowerCase();
     const matchesSearch =
-      book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      book.isbn.includes(searchTerm) ||
-      book.id.toLowerCase().includes(searchTerm.toLowerCase());
+      !term ||
+      book.title.toLowerCase().includes(term) ||
+      book.author.toLowerCase().includes(term) ||
+      book.isbn.toLowerCase().includes(term) ||
+      book.qrCode.toLowerCase().includes(term);
 
     const matchesCategory = selectedCategory === 'ALL' || book.category === selectedCategory;
-    const isAvailable = book.availableCopies > 0;
+
     const matchesStatus =
       selectedStatus === 'ALL' ||
-      (selectedStatus === 'Available' && isAvailable) ||
-      (selectedStatus === 'Borrowed' && !isAvailable);
+      (selectedStatus === 'Available' && book.availableCopies > 0) ||
+      (selectedStatus === 'Unavailable' && book.availableCopies === 0);
 
     return matchesSearch && matchesCategory && matchesStatus;
   });
@@ -206,7 +208,7 @@ export function Inventory({ onNavigate }: InventoryProps) {
             <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
             <input
               type="text"
-              placeholder="Search database by Title, Author, ISBN, or ID..."
+              placeholder="Search by Title, Author, ISBN, or QR code..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -217,7 +219,7 @@ export function Inventory({ onNavigate }: InventoryProps) {
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
+              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
             >
               <option value="ALL">All Categories</option>
               {categories.filter(c => c !== 'ALL').map(cat => (
@@ -228,11 +230,11 @@ export function Inventory({ onNavigate }: InventoryProps) {
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
+              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
               <option value="Available">Available</option>
-              <option value="Borrowed">No Copies Available</option>
+              <option value="Unavailable">Unavailable</option>
             </select>
           </div>
         </div>
@@ -261,12 +263,28 @@ export function Inventory({ onNavigate }: InventoryProps) {
       ) : filteredBooks.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-16 text-center text-slate-400 space-y-3">
           <BookOpen className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-700" />
-          <h3 className="font-bold text-slate-700 dark:text-slate-300 text-base">No Books Found</h3>
+          <h3 className="font-bold text-slate-700 dark:text-slate-300 text-base">
+            {books.length === 0 ? 'No Books in Library' : 'No Books Match Your Search'}
+          </h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            {searchTerm || selectedCategory !== 'ALL' || selectedStatus !== 'ALL'
-              ? 'No books match your current search filters.'
-              : 'The database is currently empty. Click "Register New Book" above to add your first title.'}
+            {books.length === 0
+              ? 'The database is currently empty. Click "Register New Book" above to add your first title.'
+              : 'No books match your current search and filter criteria. Try adjusting your search term, category, or availability status.'}
           </p>
+          {books.length > 0 && (searchTerm || selectedCategory !== 'ALL' || selectedStatus !== 'ALL') && (
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedCategory('ALL');
+                  setSelectedStatus('ALL');
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 font-bold rounded-xl text-xs transition-colors"
+              >
+                Clear All Filters
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
