@@ -506,7 +506,12 @@ export function Inventory({ onNavigate }: InventoryProps) {
               <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">
                 {qrModalBook.title}
               </h3>
-              <p className="text-xs text-slate-500">ISBN: {qrModalBook.isbn} | Category: {qrModalBook.category}</p>
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                by {qrModalBook.author}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                ISBN: {qrModalBook.isbn} • Category: {qrModalBook.category}
+              </p>
             </div>
 
             <div className="flex justify-center py-2">

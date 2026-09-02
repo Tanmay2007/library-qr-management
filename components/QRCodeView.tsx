@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import QRCode from 'qrcode';
+import React from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface QRCodeViewProps {
   value: string;
@@ -10,6 +10,7 @@ interface QRCodeViewProps {
   bgColor?: string;
   centerText?: string;
   className?: string;
+  includeMargin?: boolean;
 }
 
 export function QRCodeView({
@@ -17,63 +18,42 @@ export function QRCodeView({
   size = 180,
   color = '#1e1b4b',
   bgColor = '#ffffff',
-  centerText = '',
-  className = ''
+  centerText,
+  className = '',
+  includeMargin = true,
 }: QRCodeViewProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    if (!canvasRef.current || !value) return;
-
-    QRCode.toCanvas(
-      canvasRef.current,
-      value,
-      {
-        width: size,
-        margin: 2,
-        color: {
-          dark: color,
-          light: bgColor
-        },
-        errorCorrectionLevel: 'H'
-      },
-      (error) => {
-        if (error) console.error('Error generating QR code:', error);
-
-        if (centerText && canvasRef.current) {
-          const ctx = canvasRef.current.getContext('2d');
-          if (!ctx) return;
-          const centerX = size / 2;
-          const centerY = size / 2;
-          const badgeSize = size * 0.22;
-
-          ctx.fillStyle = bgColor;
-          ctx.beginPath();
-          ctx.arc(centerX, centerY, badgeSize, 0, 2 * Math.PI);
-          ctx.fill();
-
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          ctx.fillStyle = color;
-          ctx.font = `bold ${Math.floor(size * 0.08)}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(centerText, centerX, centerY);
-        }
-      }
-    );
-  }, [value, size, color, bgColor, centerText]);
+  if (!value) return null;
 
   return (
-    <div className={`inline-flex flex-col items-center justify-center p-3 bg-white rounded-xl shadow-md border border-slate-100 dark:bg-slate-900 dark:border-slate-800 ${className}`}>
-      <canvas ref={canvasRef} />
-      <div className="mt-2 text-center">
-        <span className="font-mono text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-          {value}
-        </span>
-      </div>
+    <div
+      className={`inline-flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800 ${className}`}
+    >
+      <QRCodeSVG
+        value={value}
+        size={size}
+        fgColor={color}
+        bgColor={bgColor}
+        level="H"
+        marginSize={includeMargin ? 2 : 0}
+        imageSettings={
+          centerText
+            ? {
+                src: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="30" viewBox="0 0 60 30"><rect width="100%" height="100%" rx="8" fill="${encodeURIComponent(
+                    bgColor
+                  )}" stroke="${encodeURIComponent(
+                    color
+                  )}" stroke-width="2"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="12" fill="${encodeURIComponent(
+                    color
+                  )}">${encodeURIComponent(centerText)}</text></svg>`,
+                width: size * 0.28,
+                height: size * 0.14,
+                excavate: true,
+              }
+            : undefined
+        }
+        className="rounded-lg"
+      />
     </div>
   );
 }
+
