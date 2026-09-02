@@ -22,7 +22,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  // In-memory state (No localStorage as per requirement)
+  // In-memory state for non-book components in Phase 1 & 2
   const [books, setBooks] = useState<Book[]>(INITIAL_BOOKS);
   const [members, setMembers] = useState<Member[]>(INITIAL_MEMBERS);
   const [loans, setLoans] = useState<Loan[]>(INITIAL_LOANS);
@@ -35,35 +35,6 @@ export default function Home() {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
-    }
-  };
-
-  const handleAddBook = (newBook: Book) => {
-    setBooks(prev => [newBook, ...prev]);
-    const newLog: ActivityLog = {
-      id: `LOG-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      type: 'CREATE_BOOK',
-      title: 'New Asset Cataloged',
-      details: `Added "${newBook.title}" [${newBook.id}]`,
-      badge: 'success'
-    };
-    setLogs(prev => [newLog, ...prev]);
-  };
-
-  const handleDeleteBook = (bookId: string) => {
-    const book = books.find(b => b.id === bookId);
-    setBooks(prev => prev.filter(b => b.id !== bookId));
-    if (book) {
-      const newLog: ActivityLog = {
-        id: `LOG-${Date.now()}`,
-        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
-        type: 'DELETE_BOOK',
-        title: 'Asset Removed',
-        details: `Deleted "${book.title}" [${book.id}]`,
-        badge: 'warning'
-      };
-      setLogs(prev => [newLog, ...prev]);
     }
   };
 
@@ -190,9 +161,6 @@ export default function Home() {
 
           {activeTab === 'inventory' && (
             <Inventory
-              books={books}
-              onAddBook={handleAddBook}
-              onDeleteBook={handleDeleteBook}
               onNavigate={setActiveTab}
             />
           )}

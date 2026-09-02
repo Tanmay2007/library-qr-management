@@ -1,36 +1,51 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Search, Plus, QrCode, Trash2, ExternalLink, X, Printer, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, QrCode, ExternalLink, X, Printer, Sparkles, Loader2, AlertCircle, CheckCircle2, BookOpen } from 'lucide-react';
 import { QRCodeView } from './QRCodeView';
-import { Book } from '../types';
+
+export interface DBBook {
+  id: string;
+  title: string;
+  author: string;
+  isbn: string;
+  category: string;
+  totalCopies: number;
+  availableCopies: number;
+  qrCode: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 interface InventoryProps {
-  books: Book[];
-  onAddBook: (newBook: Book) => void;
-  onDeleteBook: (bookId: string) => void;
   onNavigate: (tab: string) => void;
 }
 
-export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: InventoryProps) {
+export function Inventory({ onNavigate }: InventoryProps) {
+  const [books, setBooks] = useState<DBBook[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [qrModalBook, setQrModalBook] = useState<Book | null>(null);
+  const [qrModalBook, setQrModalBook] = useState<DBBook | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
+  // Form State
   const [formData, setFormData] = useState({
     title: '',
     author: '',
     isbn: '',
     category: 'Computer Science',
-    shelf: 'Aisle 1 - Shelf A1',
-    description: '',
-    publishedYear: new Date().getFullYear(),
-    coverUrl: ''
+    totalCopies: '1',
   });
 
-  const categories = ['ALL', ...Array.from(new Set(books.map(b => b.category)))];
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+
+  // Default fallback covers based on index
   const defaultCovers = [
     'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=400&q=80',
     'https://images.unsplash.com/photo-1532012197267-da84d127e765?auto=format&fit=crop&w=400&q=80',
@@ -38,51 +53,104 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
     'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=400&q=80'
   ];
 
+  // Fetch real books from Prisma database
+  const fetchBooks = async () => {
+    setIsLoading(true);
+    setFetchError(null);
+    try {
+      const res = await fetch('/api/books');
+      if (!res.ok) {
+        throw new Error(`Failed to load books: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setBooks(data);
+    } catch (err: any) {
+      console.error('Error loading books:', err);
+      setFetchError(err.message || 'Unable to connect to database.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBooks();
+  }, []);
+
+  const categories = ['ALL', ...Array.from(new Set(books.map(b => b.category)))];
+
   const filteredBooks = books.filter(book => {
-    const matchesSearch = 
+    const matchesSearch =
       book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
       book.isbn.includes(searchTerm) ||
       book.id.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesCategory = selectedCategory === 'ALL' || book.category === selectedCategory;
-    const matchesStatus = selectedStatus === 'ALL' || book.status === selectedStatus;
+    const isAvailable = book.availableCopies > 0;
+    const matchesStatus =
+      selectedStatus === 'ALL' ||
+      (selectedStatus === 'Available' && isAvailable) ||
+      (selectedStatus === 'Borrowed' && !isAvailable);
 
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
-  const handleSubmitNewBook = (e: React.FormEvent) => {
+  const handleSubmitNewBook = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.author) return;
+    setSubmitError(null);
+    setSubmitSuccess(null);
 
-    const newIdNum = 100 + books.length + 1;
-    const newBook: Book = {
-      id: `BK-${newIdNum}`,
-      qrPayload: `LIB-BOOK-${newIdNum}`,
-      title: formData.title,
-      author: formData.author,
-      isbn: formData.isbn || `978-000000${newIdNum}`,
-      category: formData.category,
-      shelf: formData.shelf,
-      status: 'Available',
-      coverUrl: formData.coverUrl || defaultCovers[Math.floor(Math.random() * defaultCovers.length)],
-      publishedYear: Number(formData.publishedYear) || 2026,
-      description: formData.description || 'Newly registered catalog title.',
-      addedDate: new Date().toISOString().split('T')[0]
-    };
+    if (!formData.title.trim() || !formData.author.trim() || !formData.isbn.trim() || !formData.category) {
+      setSubmitError('Title, Author, ISBN, and Category are required.');
+      return;
+    }
 
-    onAddBook(newBook);
-    setIsAddModalOpen(false);
-    setFormData({
-      title: '',
-      author: '',
-      isbn: '',
-      category: 'Computer Science',
-      shelf: 'Aisle 1 - Shelf A1',
-      description: '',
-      publishedYear: new Date().getFullYear(),
-      coverUrl: ''
-    });
+    const parsedCopies = Number(formData.totalCopies);
+    if (!formData.totalCopies.trim() || !Number.isInteger(parsedCopies) || parsedCopies <= 0) {
+      setSubmitError('Total Copies must be a whole number greater than 0.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const res = await fetch('/api/books', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: formData.title,
+          author: formData.author,
+          isbn: formData.isbn,
+          category: formData.category,
+          totalCopies: Number(formData.totalCopies),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create book');
+      }
+
+      setSubmitSuccess(`"${data.title}" successfully added to library database!`);
+      setIsAddModalOpen(false);
+      setFormData({
+        title: '',
+        author: '',
+        isbn: '',
+        category: 'Computer Science',
+        totalCopies: '1',
+      });
+
+      // Refresh list from database
+      await fetchBooks();
+    } catch (err: any) {
+      setSubmitError(err.message || 'An error occurred while creating the book.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -91,10 +159,10 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100">
-            Book Inventory & QR Registry
+            Book Inventory & Database Registry
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Manage library assets, inspect assigned QR payloads, and update shelf locations.
+            Manage real library catalog assets backed by Neon PostgreSQL & Prisma ORM.
           </p>
         </div>
 
@@ -106,13 +174,30 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
             <Printer className="w-4 h-4" /> Print Label Grid
           </button>
           <button
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={() => {
+              setSubmitError(null);
+              setSubmitSuccess(null);
+              setIsAddModalOpen(true);
+            }}
             className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm shadow-lg flex items-center gap-2 transition-all hover:scale-105"
           >
             <Plus className="w-4 h-4" /> Register New Book
           </button>
         </div>
       </div>
+
+      {/* Success Banner */}
+      {submitSuccess && (
+        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-emerald-800 dark:text-emerald-200 text-sm font-semibold flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+            <span>{submitSuccess}</span>
+          </div>
+          <button onClick={() => setSubmitSuccess(null)} className="text-emerald-500 hover:text-emerald-700">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Search & Filter Toolbar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
@@ -121,7 +206,7 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
             <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by Title, Author, ISBN, or Book ID..."
+              placeholder="Search database by Title, Author, ISBN, or ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -147,92 +232,120 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
             >
               <option value="ALL">All Statuses</option>
               <option value="Available">Available</option>
-              <option value="Borrowed">Borrowed</option>
+              <option value="Borrowed">No Copies Available</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* Book Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {filteredBooks.map((book) => (
-          <div
-            key={book.id}
-            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group"
+      {/* Main Content Area: Loading, Error, Empty, or Book Grid */}
+      {isLoading ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-16 text-center text-slate-400 space-y-3">
+          <Loader2 className="w-10 h-10 animate-spin mx-auto text-indigo-500" />
+          <p className="font-bold text-slate-700 dark:text-slate-300 text-sm">
+            Fetching books from PostgreSQL database...
+          </p>
+        </div>
+      ) : fetchError ? (
+        <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 p-8 rounded-2xl text-center text-rose-700 dark:text-rose-300 space-y-3">
+          <AlertCircle className="w-10 h-10 mx-auto text-rose-500" />
+          <h3 className="font-bold text-base">Unable to Load Inventory</h3>
+          <p className="text-xs text-rose-600 dark:text-rose-400 max-w-md mx-auto">{fetchError}</p>
+          <button
+            onClick={fetchBooks}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs"
           >
-            <div>
-              <div className="relative h-48 overflow-hidden bg-slate-100 dark:bg-slate-800">
-                <img
-                  src={book.coverUrl}
-                  alt={book.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
-                
-                <span className={`absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                  book.status === 'Available'
-                    ? 'bg-emerald-500 text-white shadow-md'
-                    : 'bg-amber-500 text-white shadow-md'
-                }`}>
-                  {book.status}
-                </span>
+            Retry Database Fetch
+          </button>
+        </div>
+      ) : filteredBooks.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-16 text-center text-slate-400 space-y-3">
+          <BookOpen className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-700" />
+          <h3 className="font-bold text-slate-700 dark:text-slate-300 text-base">No Books Found</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            {searchTerm || selectedCategory !== 'ALL' || selectedStatus !== 'ALL'
+              ? 'No books match your current search filters.'
+              : 'The database is currently empty. Click "Register New Book" above to add your first title.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {filteredBooks.map((book, idx) => {
+            const isAvailable = book.availableCopies > 0;
+            const coverUrl = defaultCovers[idx % defaultCovers.length];
 
-                <button
-                  onClick={() => setQrModalBook(book)}
-                  className="absolute bottom-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 text-indigo-600 dark:text-indigo-400 rounded-xl shadow-lg hover:bg-white hover:scale-110 transition-all"
-                  title="View Book QR Code"
-                >
-                  <QrCode className="w-5 h-5" />
-                </button>
+            return (
+              <div
+                key={book.id}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group"
+              >
+                <div>
+                  <div className="relative h-48 overflow-hidden bg-slate-100 dark:bg-slate-800">
+                    <img
+                      src={coverUrl}
+                      alt={book.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
 
-                <div className="absolute bottom-3 left-3 font-mono text-xs font-bold text-white bg-slate-900/70 px-2 py-0.5 rounded">
-                  {book.id}
+                    <span className={`absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      isAvailable
+                        ? 'bg-emerald-500 text-white shadow-md'
+                        : 'bg-amber-500 text-white shadow-md'
+                    }`}>
+                      {isAvailable ? `${book.availableCopies}/${book.totalCopies} Available` : 'All Copies On Loan'}
+                    </span>
+
+                    <button
+                      onClick={() => setQrModalBook(book)}
+                      className="absolute bottom-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 text-indigo-600 dark:text-indigo-400 rounded-xl shadow-lg hover:bg-white hover:scale-110 transition-all"
+                      title="Inspect Assigned QR Identifier"
+                    >
+                      <QrCode className="w-5 h-5" />
+                    </button>
+
+                    <div className="absolute bottom-3 left-3 font-mono text-[11px] font-bold text-white bg-slate-900/80 px-2 py-0.5 rounded truncate max-w-[150px]">
+                      {book.qrCode}
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-2">
+                    <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                      {book.category}
+                    </div>
+                    <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base leading-snug line-clamp-2">
+                      {book.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
+                      by {book.author}
+                    </p>
+                    <div className="text-xs text-slate-400 font-mono">
+                      ISBN: {book.isbn}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/20">
+                  <button
+                    onClick={() => setQrModalBook(book)}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 flex items-center gap-1"
+                  >
+                    Inspect QR Code <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    ID: {book.id.slice(0, 8)}...
+                  </span>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              <div className="p-4 space-y-2">
-                <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                  {book.category}
-                </div>
-                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base leading-snug line-clamp-2">
-                  {book.title}
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
-                  by {book.author}
-                </p>
-                <div className="text-xs text-slate-400 font-mono">
-                  ISBN: {book.isbn}
-                </div>
-                <div className="pt-2 text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                  📍 <span>{book.shelf}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/20">
-              <button
-                onClick={() => setQrModalBook(book)}
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 flex items-center gap-1"
-              >
-                Inspect QR Payload <ExternalLink className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => onDeleteBook(book.id)}
-                className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                title="Delete Asset"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* QR Modal */}
+      {/* QR Code Inspector Modal */}
       {qrModalBook && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-6 relative">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-6 relative animate-in fade-in zoom-in duration-200">
             <button
               onClick={() => setQrModalBook(null)}
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full"
@@ -242,17 +355,17 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
 
             <div className="text-center space-y-1">
               <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 text-xs font-bold uppercase tracking-wider">
-                <Sparkles className="w-3.5 h-3.5" /> Spine Tag QR Payload
+                <Sparkles className="w-3.5 h-3.5" /> Internal QR Identifier
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">
                 {qrModalBook.title}
               </h3>
-              <p className="text-xs text-slate-500">Asset ID: {qrModalBook.id} | Shelf: {qrModalBook.shelf}</p>
+              <p className="text-xs text-slate-500">ISBN: {qrModalBook.isbn} | Category: {qrModalBook.category}</p>
             </div>
 
             <div className="flex justify-center py-2">
               <QRCodeView
-                value={qrModalBook.qrPayload}
+                value={qrModalBook.qrCode}
                 size={220}
                 color="#312e81"
                 bgColor="#ffffff"
@@ -261,27 +374,18 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
             </div>
 
             <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl space-y-1 text-center font-mono text-xs text-slate-600 dark:text-slate-300">
-              <div>Encoded QR Payload:</div>
+              <div>Assigned QR Code Payload:</div>
               <div className="font-bold text-indigo-600 dark:text-indigo-400 text-sm">
-                {qrModalBook.qrPayload}
+                {qrModalBook.qrCode}
               </div>
             </div>
 
             <div className="flex gap-3">
               <button
                 onClick={() => setQrModalBook(null)}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-sm"
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-sm"
               >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  setQrModalBook(null);
-                  onNavigate('studio');
-                }}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2"
-              >
-                <Printer className="w-4 h-4" /> Open Print Studio
+                Close Inspector
               </button>
             </div>
           </div>
@@ -300,8 +404,16 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
             </button>
 
             <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-              Register New Library Asset
+              Register New Book Asset
             </h3>
+
+            {/* Form Error Banner */}
+            {submitError && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>{submitError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSubmitNewBook} className="space-y-4">
               <div>
@@ -332,12 +444,14 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
                     className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    ISBN
+                    ISBN *
                   </label>
                   <input
                     type="text"
+                    required
                     placeholder="e.g. 978-0262033848"
                     value={formData.isbn}
                     onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
@@ -349,7 +463,7 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Category
+                    Category *
                   </label>
                   <select
                     value={formData.category}
@@ -364,16 +478,24 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
                     <option value="Fiction">Fiction</option>
                   </select>
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Shelf Location
+                    Total Copies *
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Aisle 2 - Shelf B3"
-                    value={formData.shelf}
-                    onChange={(e) => setFormData({ ...formData, shelf: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={formData.totalCopies}
+                    onChange={(e) => {
+                      // Allow only digits and empty string so the user can clear and retype freely
+                      const raw = e.target.value;
+                      if (raw === '' || /^\d+$/.test(raw)) {
+                        setFormData({ ...formData, totalCopies: raw });
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                   />
                 </div>
               </div>
@@ -388,9 +510,16 @@ export function Inventory({ books, onAddBook, onDeleteBook, onNavigate }: Invent
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm shadow-lg"
+                  disabled={isSubmitting}
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm shadow-lg flex items-center justify-center gap-2"
                 >
-                  Save & Generate QR Tag
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Saving to Database...
+                    </>
+                  ) : (
+                    'Save to Database'
+                  )}
                 </button>
               </div>
             </form>
