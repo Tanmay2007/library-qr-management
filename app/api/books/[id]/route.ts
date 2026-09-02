@@ -104,3 +104,51 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ error: 'Book ID is required.' }, { status: 400 });
+    }
+
+    // Check if book exists
+    const existingBook = await prisma.book.findUnique({
+      where: { id },
+    });
+
+    if (!existingBook) {
+      return NextResponse.json({ error: 'Book not found.' }, { status: 404 });
+    }
+
+    // Check if the book has related transaction records
+    const transactionCount = await prisma.transaction.count({
+      where: { bookId: id },
+    });
+
+    if (transactionCount > 0) {
+      return NextResponse.json(
+        {
+          error:
+            'This book cannot be deleted because it has active or historical circulation transaction records that must be preserved.',
+        },
+        { status: 409 }
+      );
+    }
+
+    await prisma.book.delete({
+      where: { id },
+    });
+
+    return new NextResponse(null, { status: 204 });
+  } catch (error: any) {
+    console.error('Error deleting book:', error);
+    return NextResponse.json(
+      { error: 'An unexpected database error occurred while deleting the book.' },
+      { status: 500 }
+    );
+  }
+}
