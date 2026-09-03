@@ -17,6 +17,7 @@ import {
   X,
   ArrowUpDown,
   BookCheck,
+  Download,
 } from 'lucide-react';
 
 export interface DBBookSummary {
@@ -58,6 +59,8 @@ export function TransactionHistory({ onNavigate }: TransactionHistoryProps) {
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // Filter option lists loaded from real endpoints
   const [booksList, setBooksList] = useState<{ id: string; title: string; isbn: string }[]>([]);
@@ -178,6 +181,51 @@ export function TransactionHistory({ onNavigate }: TransactionHistoryProps) {
     setSelectedBorrowerId('ALL');
   };
 
+  const handleDownloadCSV = async () => {
+    if (transactions.length === 0 || isLoading || isExporting) return;
+    setIsExporting(true);
+    setExportError(null);
+
+    const params = new URLSearchParams();
+    if (statusFilter !== 'ALL') params.set('status', statusFilter);
+    if (overdueFilter !== 'ALL') params.set('overdue', overdueFilter);
+    if (fromDate) params.set('from', fromDate);
+    if (toDate) params.set('to', toDate);
+    if (selectedBookId !== 'ALL') params.set('book', selectedBookId);
+    if (selectedBorrowerId !== 'ALL') params.set('borrower', selectedBorrowerId);
+
+    try {
+      const url = `/api/transactions/export${params.toString() ? `?${params.toString()}` : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Export failed (HTTP ${res.status})`);
+      }
+      const blob = await res.blob();
+
+      // Extract filename from header or use default
+      const disposition = res.headers.get('content-disposition');
+      let filename = `library-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+      if (disposition) {
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        if (match?.[1]) filename = match[1];
+      }
+
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      console.error('Error downloading CSV:', err);
+      setExportError(err.message || 'Failed to download CSV');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const formatDate = (isoString: string | null): string => {
     if (!isoString) return '—';
     try {
@@ -209,13 +257,55 @@ export function TransactionHistory({ onNavigate }: TransactionHistoryProps) {
           </p>
         </div>
 
-        <button
-          onClick={fetchTransactions}
-          className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs flex items-center gap-2 transition-all self-start sm:self-auto shadow-sm"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh History
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={fetchTransactions}
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs flex items-center gap-2 transition-all shadow-sm"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh History
+          </button>
+
+          <button
+            onClick={handleDownloadCSV}
+            disabled={isLoading || isExporting || transactions.length === 0}
+            title={
+              isLoading
+                ? 'Loading transactions...'
+                : transactions.length === 0
+                ? 'No matching records to export'
+                : 'Download filtered transactions as CSV'
+            }
+            className={`px-4 py-2.5 font-bold rounded-xl text-xs flex items-center gap-2 transition-all shadow-sm ${
+              isLoading || isExporting || transactions.length === 0
+                ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-200/60 dark:border-slate-800'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30 active:scale-95'
+            }`}
+          >
+            {isExporting ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+            <span>{isExporting ? 'Exporting...' : 'Download CSV'}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Export Error Alert if any */}
+      {exportError && (
+        <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-2xl text-xs text-rose-700 dark:text-rose-300 flex items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+            <span className="font-semibold">Export failed: {exportError}</span>
+          </div>
+          <button
+            onClick={() => setExportError(null)}
+            className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-300 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
