@@ -10,6 +10,7 @@ import { Circulation } from '../components/Circulation';
 import { Members } from '../components/Members';
 import { QRStudio } from '../components/QRStudio';
 import { BorrowedBooks } from '../components/BorrowedBooks';
+import { TransactionHistory } from '../components/TransactionHistory';
 import { Book, Member, Loan, ActivityLog } from '../types';
 
 import {
@@ -186,6 +187,10 @@ export default function Home() {
 
           {activeTab === 'borrowed' && (
             <BorrowedBooks onNavigate={setActiveTab} />
+          )}
+
+          {activeTab === 'history' && (
+            <TransactionHistory onNavigate={setActiveTab} />
           )}
 
           {activeTab === 'members' && (
