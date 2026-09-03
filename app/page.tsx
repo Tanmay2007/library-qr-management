@@ -151,10 +151,6 @@ export default function Home() {
         <main className="flex-1 min-w-0">
           {activeTab === 'dashboard' && (
             <Dashboard
-              books={books}
-              members={members}
-              loans={loans}
-              logs={logs}
               onNavigate={setActiveTab}
               onOpenNewBookModal={() => setActiveTab('inventory')}
             />
